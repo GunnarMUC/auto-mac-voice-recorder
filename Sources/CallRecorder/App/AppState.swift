@@ -165,6 +165,17 @@ final class AppState {
                     let jsonPath = try writeTranscriptJSON(segments: segments)
                     let summary = try await summarizer.summarize(transcriptPath: jsonPath, model: model.name)
                     db.saveSummary(callId: callId, summary: summary)
+
+                    var actionItems: [ActionItem] = []
+                    for t in summary.team_todos {
+                        actionItems.append(ActionItem(owner: "Team", task: t, completed: false))
+                    }
+                    for (speaker, tasks) in summary.per_person_todos {
+                        for t in tasks {
+                            actionItems.append(ActionItem(owner: speaker, task: t, completed: false))
+                        }
+                    }
+                    db.saveTodos(callId: callId, todos: actionItems)
                     try? FileManager.default.removeItem(atPath: jsonPath)
                 } catch {
                     print("Summarization skipped: \(error.localizedDescription)")
@@ -203,6 +214,16 @@ final class AppState {
     func selectCall(_ call: CallRecord) {
         var c = call
         c.transcriptSegments = db.fetchSegments(for: call.id)
+        c.actionItems = db.fetchTodos(for: call.id)
         selectedCall = c
+    }
+
+    func toggleActionItem(_ item: ActionItem) {
+        guard var call = selectedCall else { return }
+        if let idx = call.actionItems.firstIndex(where: { $0.id == item.id }) {
+            call.actionItems[idx].completed.toggle()
+            selectedCall = call
+            db.saveTodos(callId: call.id, todos: call.actionItems)
+        }
     }
 }

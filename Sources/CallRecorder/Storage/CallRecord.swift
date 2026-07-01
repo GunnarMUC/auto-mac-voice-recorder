@@ -13,6 +13,7 @@ struct CallRecord: Identifiable, Codable, Hashable {
     var decisions: [String]?
     var teamTodos: [String]?
     var perPersonTodos: [String: [String]]?
+    var actionItems: [ActionItem]
     var transcriptSegments: [TranscriptSegment]
 
     var formattedDate: String {
@@ -41,4 +42,11 @@ struct TranscriptSegment: Identifiable, Codable, Hashable {
     let startTime: TimeInterval
     let endTime: TimeInterval
     let text: String
+}
+
+struct ActionItem: Identifiable, Codable, Hashable {
+    var id: String { "\(owner):\(task)" }
+    var owner: String
+    var task: String
+    var completed: Bool
 }

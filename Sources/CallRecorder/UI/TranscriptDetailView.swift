@@ -49,23 +49,35 @@ struct TranscriptDetailView: View {
                 }
             }
 
-            if let todos = call.teamTodos, !todos.isEmpty {
-                Section("Team To-Dos") {
-                    ForEach(todos, id: \.self) { t in
-                        Label(t, systemImage: "person.3")
+            if !call.actionItems.isEmpty {
+                Section("To-Dos") {
+                    ForEach(call.actionItems) { item in
+                        Button {
+                            state.toggleActionItem(item)
+                        } label: {
+                            HStack {
+                                Image(systemName: item.completed ? "checkmark.square" : "square")
+                                    .foregroundStyle(item.completed ? .green : .secondary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.task)
+                                        .strikethrough(item.completed)
+                                        .foregroundStyle(item.completed ? .secondary : .primary)
+                                    Text(item.owner)
+                                        .font(.caption2)
+                                        .foregroundStyle(.blue)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
 
-            if let personTodos = call.perPersonTodos {
-                ForEach(Array(personTodos.keys).sorted(), id: \.self) { speaker in
-                    if let items = personTodos[speaker], !items.isEmpty {
-                        Section("\(speaker) To-Dos") {
-                            ForEach(items, id: \.self) { item in
-                                Label(item, systemImage: "person")
-                            }
-                        }
-                    }
+            Section {
+                Button {
+                    exportMarkdown(call)
+                } label: {
+                    Label("Export to Markdown", systemImage: "square.and.arrow.up")
                 }
             }
 
@@ -98,6 +110,50 @@ struct TranscriptDetailView: View {
             }
         }
         .navigationTitle("Transcript")
+    }
+
+    private func exportMarkdown(_ call: CallRecord) {
+        var md = ""
+        md += "# \(call.title)\n\n"
+        md += "**Date:** \(call.formattedDate)\n"
+        md += "**Duration:** \(call.formattedDuration)\n\n"
+
+        if let summary = call.summary {
+            md += "## Summary\n\n\(summary)\n\n"
+        }
+
+        if let decisions = call.decisions, !decisions.isEmpty {
+            md += "## Decisions\n\n"
+            for d in decisions { md += "- \(d)\n" }
+            md += "\n"
+        }
+
+        if !call.actionItems.isEmpty {
+            md += "## To-Dos\n\n"
+            for item in call.actionItems {
+                let check = item.completed ? "[x]" : "[ ]"
+                md += "- \(check) **\(item.owner):** \(item.task)\n"
+            }
+            md += "\n"
+        }
+
+        md += "## Transcript\n\n"
+        for seg in call.transcriptSegments {
+            let t = timestamp(seg.startTime, seg.endTime)
+            md += "**\(seg.speakerId)** [\(t)]: \(seg.text)\n\n"
+        }
+
+        let saveURL = URL(fileURLWithPath: NSHomeDirectory() + "/Desktop/\(uuidFilename(from: call)).md")
+        try? md.write(to: saveURL, atomically: true, encoding: .utf8)
+        NSWorkspace.shared.activateFileViewerSelecting([saveURL])
+    }
+
+    private func uuidFilename(from call: CallRecord) -> String {
+        let formatter = ISO8601DateFormatter()
+        let dateStr = formatter.string(from: call.startedAt)
+            .replacingOccurrences(of: ":", with: "-")
+            .prefix(19)
+        return "Call_\(dateStr)"
     }
 
     private func timestamp(_ start: TimeInterval, _ end: TimeInterval) -> String {

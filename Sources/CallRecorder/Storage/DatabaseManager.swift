@@ -17,6 +17,7 @@ final class DatabaseManager {
     private let audioFilePath = Expression<String>("audio_file_path")
     private let status = Expression<String>("status")
     private let summaryJson = Expression<String?>("summary_json")
+    private let todosJson = Expression<String?>("todos_json")
     private let createdAt = Expression<Date>("created_at")
 
     private let segId = Expression<Int64>("id")
@@ -62,6 +63,7 @@ final class DatabaseManager {
             t.foreignKey(callId, references: calls, id)
         })
         try? db?.run(calls.addColumn(summaryJson, defaultValue: nil))
+        try? db?.run(calls.addColumn(todosJson, defaultValue: nil))
     }
 
     func insertCall(uuid: String, audioFilePath: String) -> Int64? {
@@ -90,6 +92,34 @@ final class DatabaseManager {
                 self.endedAt <- endedAt,
                 self.durationSeconds <- duration
             ))
+        }
+    }
+
+    func saveTodos(callId: Int64, todos: [ActionItem]) {
+        _ = queue.sync {
+            guard let data = try? JSONEncoder().encode(todos),
+                  let json = String(data: data, encoding: .utf8)
+            else { return }
+            let call = calls.filter(self.id == callId)
+            _ = try? db?.run(call.update(self.todosJson <- json))
+        }
+    }
+
+    func fetchTodos(for callId: Int64) -> [ActionItem] {
+        queue.sync {
+            guard let db else { return [] }
+            do {
+                for row in try db.prepare(calls.filter(self.id == callId)) {
+                    guard let json = row[todosJson],
+                          let data = json.data(using: .utf8),
+                          let todos = try? JSONDecoder().decode([ActionItem].self, from: data)
+                    else { continue }
+                    return todos
+                }
+                return []
+            } catch {
+                return []
+            }
         }
     }
 
@@ -159,6 +189,7 @@ final class DatabaseManager {
                         decisions: summary?.decisions,
                         teamTodos: summary?.team_todos,
                         perPersonTodos: summary?.per_person_todos,
+                        actionItems: [],
                         transcriptSegments: []
                     ))
                 }
