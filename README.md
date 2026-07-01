@@ -1,6 +1,6 @@
 # Call Recorder
 
-A local-only, open-source macOS menu-bar app for recording calls (mic + system audio via BlackHole), transcribing speech with OpenAI Whisper (auto-detect DE/EN), and storing results in a local SQLite database.
+A local-only, open-source macOS menu-bar app for recording calls (mic + system audio via BlackHole), transcribing speech with OpenAI Whisper (auto-detect DE/EN), speaker diarization via Pyannote, and AI summarization via Ollama.
 
 ## Features
 
@@ -9,7 +9,9 @@ A local-only, open-source macOS menu-bar app for recording calls (mic + system a
 - **Audio input picker** — select any input device (microphone, BlackHole, Aggregate Device)
 - **Local transcription** — runs OpenAI Whisper entirely on your Mac (no cloud)
 - **Language auto-detect** — German and English are supported automatically
-- **Call history** — browse past recordings with searchable transcripts
+- **Speaker diarization** — Pyannote.audio identifies "who said what" (optional, requires Python)
+- **AI summarization** — Ollama (qwen2.5, mistral, etc.) generates summary, decisions, team/personal to-dos
+- **Call history** — browse past recordings with transcripts and summaries
 - **Automatic audio conversion** — resamples recorded audio to Whisper's preferred 16 kHz mono format
 
 ## Requirements
@@ -19,6 +21,12 @@ A local-only, open-source macOS menu-bar app for recording calls (mic + system a
 - **Xcode 15+** (to build from source)
 - **BlackHole 2ch** virtual audio driver — required for capturing system audio (see Setup)
 - **~1 GB free disk space** — for the Whisper model and temporary files
+
+### Optional
+
+- **Ollama** — for AI summarization (install via `brew install ollama`)
+- **Python 3.9+** — for speaker diarization (see `Scripts/setup.sh`)
+- **HuggingFace account** — for Pyannote model download
 
 ## Setup
 
@@ -37,7 +45,22 @@ To record both your microphone **and** the other party's audio on a call, you ne
 
 > **Note:** Setting BlackHole as output means you won't hear audio through your speakers. During calls, route the call app (Zoom, Teams, etc.) to use a multi-output device or use a tool like [Loopback](https://rogueamoeba.com/loopback/) for more flexible routing.
 
-### 2. Build & Run
+### 2. Install Ollama (for AI summarization)
+
+```bash
+brew install ollama
+ollama pull qwen2.5:7b    # or mistral:7b, mistral-nemo, etc.
+ollama serve               # start in background
+```
+
+### 3. Setup Python Environment (for speaker diarization, optional)
+
+```bash
+bash Scripts/setup.sh
+huggingface-cli login --token YOUR_HF_TOKEN
+```
+
+### 4. Build & Run
 
 ```bash
 swift run CallRecorder
@@ -45,18 +68,20 @@ swift run CallRecorder
 
 The app will appear as a microphone icon in your menu bar.
 
-### 3. First Run
+### 5. First Run
 
 1. Click the menu bar icon → select **Start Recording** (or **Download Model** if required)
 2. Grant **Microphone Access** when macOS prompts you
+3. In **LLM Model** menu → **Connect/Refresh** → select a model (e.g. `qwen2.5:7b`)
 
-### 4. Recording a Call
+### 6. Recording a Call
 
 1. **Before the call:** Set your system audio output to **BlackHole 2ch** (or your Aggregate Device)
 2. Select your Aggregate Device in the app's **Audio Input** menu
 3. Click **Start Recording**
 4. When the call ends, click **Stop & Process**
-5. The app transcribes locally (~0.5× real-time), then shows the result in **Call History**
+5. The app transcribes locally (~0.5× real-time), then runs diarization (if enabled) and summarization
+6. View results in **Call History** — transcript with speaker labels + summary + to-dos
 
 ## Project Structure
 
@@ -64,6 +89,10 @@ The app will appear as a microphone icon in your menu bar.
 CallRecorder/
 ├── Package.swift                              # Swift Package Manager manifest
 ├── Dependencies/whisper.spm/                  # whisper.cpp (local SPM package)
+├── Scripts/
+│   ├── diarize.py                             # Pyannote speaker diarization
+│   ├── summarize.py                           # MLX-based LLM summarization (reference)
+│   └── setup.sh                               # Python env setup
 ├── Sources/CallRecorder/
 │   ├── App/
 │   │   ├── CallRecorderApp.swift              # @main entry point, MenuBarExtra
@@ -74,12 +103,19 @@ CallRecorder/
 │   ├── Transcription/
 │   │   ├── WhisperTranscriber.swift           # whisper.cpp C API bridge
 │   │   └── ModelManager.swift                 # Download & cache Whisper GGML model
+│   ├── SpeakerDiarization/
+│   │   ├── SpeakerDiarizer.swift              # Python subprocess bridge (Pyannote)
+│   │   └── DiarizationAligner.swift           # Merge Whisper + speaker segments
+│   ├── LLM/
+│   │   ├── OllamaManager.swift                # Ollama HTTP API client
+│   │   ├── LLMSummarizer.swift                # Swift bridge for summarization
+│   │   └── LLMModelManager.swift              # Model cache check (reference)
 │   ├── Storage/
 │   │   ├── DatabaseManager.swift              # SQLite persistence via SQLite.swift
 │   │   └── CallRecord.swift                   # Data models
 │   └── UI/
 │       ├── CallHistoryView.swift              # List of past recordings
-│       └── TranscriptDetailView.swift         # Full transcript viewer
+│       └── TranscriptDetailView.swift         # Full transcript + summary view
 ├── Sources/PoC/                               # CLI proof-of-concept tool
 └── call-recorder-spec.md                      # Full technical specification
 ```
@@ -105,6 +141,23 @@ User clicks "Stop & Process"
          │
          ▼
 ┌──────────────────────┐
+│  SpeakerDiarizer     │ → Pyannote.audio (Python subprocess)
+│  (optional)          │    → speaker segments
+└──────────────────────┘
+         │
+         ▼
+┌──────────────────────┐
+│  DiarizationAligner  │ → Merge transcript + speaker segments
+└──────────────────────┘
+         │
+         ▼
+┌──────────────────────┐
+│  LLMSummarizer       │ → Ollama (local HTTP API)
+│  (qwen2.5/mistral)   │    → summary + decisions + to-dos
+└──────────────────────┘
+         │
+         ▼
+┌──────────────────────┐
 │  DatabaseManager     │ → SQLite.swift → persistent storage
 │  (SQLite)            │
 └──────────────────────┘
@@ -121,6 +174,8 @@ User clicks "Stop & Process"
 |------------|--------|---------|---------|
 | **whisper.cpp** | [ggerganov/whisper.cpp](https://github.com/ggerganov/whisper.cpp) | MIT | Local speech-to-text |
 | **SQLite.swift** | [stephencelis/SQLite.swift](https://github.com/stephencelis/SQLite.swift) | MIT | Local database |
+| **Ollama** | [ollama/ollama](https://github.com/ollama/ollama) | MIT | Local LLM inference |
+| **Pyannote.audio** | [pyannote/pyannote-audio](https://github.com/pyannote/pyannote-audio) | MIT | Speaker diarization |
 | **BlackHole 2ch** | [Existential Audio](https://existential.audio/blackhole/) | MIT | Virtual audio capture |
 
 ## Model
@@ -139,25 +194,26 @@ Whisper auto-detects the spoken language. German and English are fully supported
 
 ## Known Limitations
 
-- **No speaker diarization** — planned: Pyannote to identify "who said what"
-- **No AI summarization** — planned: local LLM (Llama/Mistral via MLX)
 - **No real-time transcription** — transcription runs after recording stops
 - **Audio output routing is manual** — BlackHole must be set as system output
 - **Single-file processing** — one recording at a time
+- **Speaker diarization requires Python setup** — see `Scripts/setup.sh`
+- **LLM summarization requires Ollama** — install via brew + pull a model
+
+## Next Steps (Phase 3)
+
+- Speaker manual labeling (rename SPEAKER_00 → "Alice")
+- To-do checkboxes & persistence
+- Export to Markdown/PDF
+- Real-time transcription
+- Better audio routing wizard
 
 ## Privacy
 
 - **Zero network calls** for AI processing (except the one-time model download)
 - All audio and transcripts stay on your Mac in `~/Library/Application Support/CallRecorder/`
+- If Ollama is used, summarization runs locally via its HTTP API on `127.0.0.1:11434`
 - You are responsible for informing call participants that you are recording
-
-## Next Steps
-
-- Speaker diarization (Pyannote.audio) — identify different speakers
-- Local LLM summarization — summarize calls and extract action items
-- Per-person and team to-do lists
-- Export to Markdown/PDF
-- Better audio routing wizard
 
 ## Troubleshooting
 
@@ -166,8 +222,10 @@ Whisper auto-detects the spoken language. German and English are fully supported
 | "Microphone access denied" | Go to **System Settings → Privacy & Security → Microphone** and enable Call Recorder |
 | "No audio in transcript" | Verify BlackHole is selected as output and the Aggregate Device is selected as input |
 | "Transcription is slow" | Normal on CPU; Apple Silicon GPU used automatically |
-| "Model download failed" | Check your internet connection. Manually download `ggml-base.bin` from [HuggingFace](https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin) and place it in `~/Library/Application Support/CallRecorder/models/` |
-| "App menu doesn't respond" | Make sure you click the menu icon to open the dropdown, then select items |
+| "Model download failed" | Manually download from [HuggingFace](https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin) → `~/Library/Application Support/CallRecorder/models/` |
+| "No Ollama models show" | Run `ollama serve` in background, then click "Connect/Refresh" in the menu |
+| "Ollama summary missing" | Check `ollama serve` is running; model must be pulled via `ollama pull` |
+| "Speaker labels are all SPEAKER_00" | Diarization optional — run `bash Scripts/setup.sh` + `huggingface-cli login` |
 
 ## Development
 
