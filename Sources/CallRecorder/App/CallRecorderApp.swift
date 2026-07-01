@@ -100,6 +100,7 @@ struct MenuBarContentView: View {
 
     // MARK: - LLM Model
 
+    @ViewBuilder
     private var llmMenu: some View {
         if state.ollamaRunning && !state.availableModels.isEmpty {
             Menu(state.selectedModel?.name ?? "Select Summary Model") {
