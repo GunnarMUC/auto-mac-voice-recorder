@@ -31,6 +31,13 @@ struct CallRecorderApp: App {
             .frame(minWidth: 600, minHeight: 400)
         }
         .defaultSize(width: 700, height: 500)
+
+        Window("Settings", id: "settings") {
+            SettingsView()
+                .environment(state)
+        }
+        .defaultSize(width: 450, height: 350)
+        .windowResizability(.contentSize)
     }
 }
 
@@ -72,6 +79,7 @@ struct MenuBarContentView: View {
 
         Divider()
         historyButton
+        settingsButton
         Divider()
         quitButton
     }
@@ -197,6 +205,14 @@ struct MenuBarContentView: View {
             Label("Call History", systemImage: "clock.arrow.circlepath")
         }
         .keyboardShortcut("h")
+    }
+
+    private var settingsButton: some View {
+        Button {
+            openWindow(id: "settings")
+        } label: {
+            Label("Settings", systemImage: "gearshape")
+        }
     }
 
     private var quitButton: some View {

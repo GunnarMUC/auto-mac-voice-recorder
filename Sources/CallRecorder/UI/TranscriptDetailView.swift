@@ -95,7 +95,12 @@ struct TranscriptDetailView: View {
                 Button {
                     exportMarkdown(call)
                 } label: {
-                    Label("Export to Markdown", systemImage: "square.and.arrow.up")
+                    Label("Export Markdown", systemImage: "doc.text")
+                }
+                Button {
+                    exportPDF(call)
+                } label: {
+                    Label("Export PDF", systemImage: "doc.richtext")
                 }
             }
 
@@ -130,7 +135,61 @@ struct TranscriptDetailView: View {
         .navigationTitle("Transcript")
     }
 
-    private func exportMarkdown(_ call: CallRecord) {
+    private func exportPDF(_ call: CallRecord) {
+        let md = buildMarkdown(call)
+        let html = """
+        <html><head><meta charset="utf-8"><style>
+        body { font-family: -apple-system; padding: 40px; line-height: 1.5; }
+        h1 { font-size: 24pt; } h2 { font-size: 18pt; margin-top: 20px; }
+        p { margin: 8px 0; } strong { color: #2563eb; }
+        </style></head><body>\(md.replacingOccurrences(of: "\n", with: "<br>")
+        .replacingOccurrences(of: "## ", with: "<h2>")
+        .replacingOccurrences(of: "# ", with: "<h1>")
+        .replacingOccurrences(of: "**", with: "<strong>"))
+        </body></html>
+        """
+
+        let printInfo = NSPrintInfo.shared
+        printInfo.topMargin = 20; printInfo.bottomMargin = 20
+        printInfo.leftMargin = 40; printInfo.rightMargin = 40
+
+        let pdfData = NSMutableData()
+        guard let consumer = CGDataConsumer(data: pdfData as CFMutableData) else { return }
+        var mediaBox = CGRect(x: 0, y: 0, width: 595, height: 842)
+        guard let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else { return }
+
+        let graphics = NSGraphicsContext(cgContext: context, flipped: true)
+        let attrStr = try? NSAttributedString(
+            data: html.data(using: .utf8)!,
+            options: [.documentType: NSAttributedString.DocumentType.html],
+            documentAttributes: nil
+        )
+
+        NSGraphicsContext.current = graphics
+        let framesetter = CTFramesetterCreateWithAttributedString(attrStr!)
+        var page = 0
+        let frameRect = CGRect(x: 40, y: 40, width: 515, height: 762)
+        var charIndex = 0
+
+        while charIndex < attrStr!.length {
+            let path = CGPath(rect: frameRect, transform: nil)
+            let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: charIndex, length: 0), path, nil)
+            context.beginPage(mediaBox: &mediaBox)
+            CTFrameDraw(frame, context)
+            context.endPage()
+            let range = CTFrameGetVisibleStringRange(frame)
+            if range.length == 0 { break }
+            charIndex = range.location + range.length
+            page += 1
+        }
+        NSGraphicsContext.current = nil
+
+        let saveURL = URL(fileURLWithPath: NSHomeDirectory() + "/Desktop/\(uuidFilename(from: call)).pdf")
+        pdfData.write(to: saveURL, atomically: true)
+        NSWorkspace.shared.activateFileViewerSelecting([saveURL])
+    }
+
+    private func buildMarkdown(_ call: CallRecord) -> String {
         var md = ""
         md += "# \(call.title)\n\n"
         md += "**Date:** \(call.formattedDate)\n"
@@ -158,9 +217,14 @@ struct TranscriptDetailView: View {
         md += "## Transcript\n\n"
         for seg in call.transcriptSegments {
             let t = timestamp(seg.startTime, seg.endTime)
-            md += "**\(seg.speakerId)** [\(t)]: \(seg.text)\n\n"
+            let name = speakerDisplayName(call, seg.speakerId)
+            md += "**\(name)** [\(t)]: \(seg.text)\n\n"
         }
+        return md
+    }
 
+    private func exportMarkdown(_ call: CallRecord) {
+        let md = buildMarkdown(call)
         let saveURL = URL(fileURLWithPath: NSHomeDirectory() + "/Desktop/\(uuidFilename(from: call)).md")
         try? md.write(to: saveURL, atomically: true, encoding: .utf8)
         NSWorkspace.shared.activateFileViewerSelecting([saveURL])

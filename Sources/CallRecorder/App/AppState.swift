@@ -35,6 +35,7 @@ final class AppState {
     private let ollama = OllamaManager.shared
     private let db = DatabaseManager()
     private let modelManager = ModelManager.shared
+    var modelsDir: URL { modelManager.modelsDir }
     private var currentAudioPath: String?
     private var currentCallId: Int64?
     private var errorClearTask: Task<Void, Never>?
