@@ -42,16 +42,16 @@ struct MenuBarContentView: View {
         devicesMenu
         llmMenu
 
+        Divider()
+
         switch state.recordingState {
         case .idle:
             if state.modelLoaded {
-                Divider()
                 startButton
             } else {
                 downloadButton
             }
         case .recording(let startedAt):
-            Divider()
             Text(timeString(from: startedAt, at: .now))
                 .font(.title3)
                 .monospacedDigit()
@@ -64,10 +64,8 @@ struct MenuBarContentView: View {
             Divider()
             stopButton
         case .processing:
-            Divider()
             processingItem
         case .needsDownload(let progress):
-            Divider()
             downloadProgressItem(progress: progress)
         }
 
@@ -102,12 +100,14 @@ struct MenuBarContentView: View {
 
     @ViewBuilder
     private var llmMenu: some View {
-        if state.ollamaRunning && !state.availableModels.isEmpty {
-            Menu(state.selectedModel?.name ?? "Select Summary Model") {
-                Button("Refresh Models") {
-                    Task { await state.refreshOllama() }
-                }
-                Divider()
+        Menu(state.selectedModel?.name ?? "LLM Model") {
+            Button("Connect/Refresh") {
+                Task { await state.refreshOllama() }
+            }
+            Divider()
+            if state.availableModels.isEmpty {
+                Text("No models found").foregroundStyle(.secondary)
+            } else {
                 ForEach(state.availableModels) { model in
                     Button {
                         state.selectedModel = model
@@ -120,10 +120,6 @@ struct MenuBarContentView: View {
                         }
                     }
                 }
-            }
-        } else {
-            Button("Connect to Ollama...") {
-                Task { await state.refreshOllama() }
             }
         }
     }
