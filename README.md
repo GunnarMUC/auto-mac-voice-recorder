@@ -190,7 +190,7 @@ You can manually place a different model there (e.g., `ggml-small.bin` for highe
 
 ## Language Support
 
-Whisper auto-detects the spoken language. German and English are fully supported; other languages may work but are not explicitly tested.
+Whisper Base model auto-detects the spoken language. German and English are supported but detection quality varies — `ggml-base.bin` (~150 MB) sometimes misidentifies DE as EN or vice versa. For better accuracy, upgrade to `ggml-small.bin` (~466 MB) — see TODO.md.
 
 ## Known Limitations
 
