@@ -9,6 +9,10 @@ struct CallRecord: Identifiable, Codable, Hashable {
     var durationSeconds: Int?
     let audioFilePath: String
     var status: CallStatus
+    var summary: String?
+    var decisions: [String]?
+    var teamTodos: [String]?
+    var perPersonTodos: [String: [String]]?
     var transcriptSegments: [TranscriptSegment]
 
     var formattedDate: String {

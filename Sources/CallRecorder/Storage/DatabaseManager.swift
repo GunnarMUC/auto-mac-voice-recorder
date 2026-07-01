@@ -16,6 +16,7 @@ final class DatabaseManager {
     private let durationSeconds = Expression<Int?>("duration_seconds")
     private let audioFilePath = Expression<String>("audio_file_path")
     private let status = Expression<String>("status")
+    private let summaryJson = Expression<String?>("summary_json")
     private let createdAt = Expression<Date>("created_at")
 
     private let segId = Expression<Int64>("id")
@@ -60,6 +61,7 @@ final class DatabaseManager {
             t.column(text)
             t.foreignKey(callId, references: calls, id)
         })
+        try db?.run(calls.addColumn(summaryJson, defaultValue: nil))
     }
 
     func insertCall(uuid: String, audioFilePath: String) -> Int64? {
@@ -88,6 +90,16 @@ final class DatabaseManager {
                 self.endedAt <- endedAt,
                 self.durationSeconds <- duration
             ))
+        }
+    }
+
+    func saveSummary(callId: Int64, summary: CallSummary) {
+        _ = queue.sync {
+            guard let data = try? JSONEncoder().encode(summary),
+                  let json = String(data: data, encoding: .utf8)
+            else { return }
+            let call = calls.filter(self.id == callId)
+            _ = try? db?.run(call.update(self.summaryJson <- json))
         }
     }
 
@@ -130,6 +142,10 @@ final class DatabaseManager {
             do {
                 var results: [CallRecord] = []
                 for row in try db.prepare(calls.order(createdAt.desc)) {
+                    let summary: CallSummary? = row[summaryJson].flatMap { json in
+                        guard let data = json.data(using: .utf8) else { return nil }
+                        return try? JSONDecoder().decode(CallSummary.self, from: data)
+                    }
                     results.append(CallRecord(
                         id: row[id],
                         uuid: row[uuid],
@@ -139,6 +155,10 @@ final class DatabaseManager {
                         durationSeconds: row[durationSeconds],
                         audioFilePath: row[audioFilePath],
                         status: CallStatus(rawValue: row[status]) ?? .error,
+                        summary: summary?.summary,
+                        decisions: summary?.decisions,
+                        teamTodos: summary?.team_todos,
+                        perPersonTodos: summary?.per_person_todos,
                         transcriptSegments: []
                     ))
                 }

@@ -14,6 +14,7 @@ final class AppState {
     var recordingState: RecordingState = .idle
     var modelLoaded: Bool = false
     var diarizationAvailable: Bool = false
+    var llmAvailable: Bool = false
     var availableDevices: [AudioDevice] = []
     var selectedDevice: AudioDevice?
     var calls: [CallRecord] = []
@@ -26,8 +27,10 @@ final class AppState {
     let transcriber = WhisperTranscriber()
     private let diarizer = SpeakerDiarizer()
     private let aligner = DiarizationAligner()
+    private let summarizer = LLMSummarizer()
     private let db = DatabaseManager()
     private let modelManager = ModelManager.shared
+    private let llmModelManager = LLMModelManager.shared
     private var currentAudioPath: String?
     private var currentCallId: Int64?
     private var errorClearTask: Task<Void, Never>?
@@ -57,6 +60,7 @@ final class AppState {
             modelLoaded = transcriber.loadModel(at: modelManager.whisperModelURL.path)
         }
         diarizationAvailable = diarizer.findPython() != nil && diarizer.findScript() != nil
+        llmAvailable = summarizer.findPython() != nil && summarizer.findScript() != nil && llmModelManager.modelExists
     }
 
     func downloadModel() async {
@@ -123,16 +127,30 @@ final class AppState {
                 db.insertSegment(callId: callId, speakerId: "SPEAKER_00", startTime: start, endTime: end, text: text)
             }
 
+            let transcriptSegments = db.fetchSegments(for: callId)
+
             if diarizationAvailable {
                 do {
                     let speakerSegments = try await diarizer.diarize(audioFile: audioPath)
-                    let transcriptSegments = db.fetchSegments(for: callId)
                     let aligned = aligner.align(transcriptSegments: transcriptSegments, speakerSegments: speakerSegments)
                     for seg in aligned {
                         db.updateSegmentSpeaker(callId: callId, startTime: seg.startTime, speaker: seg.speaker)
                     }
                 } catch {
                     print("Diarization skipped: \(error.localizedDescription)")
+                }
+            }
+
+            if llmAvailable {
+                do {
+                    var segments = db.fetchSegments(for: callId)
+                    if segments.isEmpty { segments = transcriptSegments }
+                    let jsonPath = try writeTranscriptJSON(segments: segments)
+                    let summary = try await summarizer.summarize(transcriptPath: jsonPath)
+                    db.saveSummary(callId: callId, summary: summary)
+                    try? FileManager.default.removeItem(atPath: jsonPath)
+                } catch {
+                    print("Summarization skipped: \(error.localizedDescription)")
                 }
             }
 
@@ -144,6 +162,21 @@ final class AppState {
             errorMessage = error.localizedDescription
             recordingState = .idle
         }
+    }
+
+    private func writeTranscriptJSON(segments: [TranscriptSegment]) throws -> String {
+        let tmp = FileManager.default.temporaryDirectory.appending(component: "transcript-\(UUID().uuidString).json")
+        let list = segments.map { seg in
+            [
+                "speaker": seg.speakerId,
+                "text": seg.text,
+                "start": seg.startTime,
+                "end": seg.endTime,
+            ] as [String: Any]
+        }
+        let data = try JSONSerialization.data(withJSONObject: list, options: [.withoutEscapingSlashes])
+        try data.write(to: tmp)
+        return tmp.path
     }
 
     func loadCalls() {
