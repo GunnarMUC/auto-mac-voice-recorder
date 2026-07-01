@@ -14,7 +14,9 @@ final class AppState {
     var recordingState: RecordingState = .idle
     var modelLoaded: Bool = false
     var diarizationAvailable: Bool = false
-    var llmAvailable: Bool = false
+    var ollamaRunning: Bool = false
+    var availableModels: [OllamaModel] = []
+    var selectedModel: OllamaModel?
     var availableDevices: [AudioDevice] = []
     var selectedDevice: AudioDevice?
     var calls: [CallRecord] = []
@@ -28,9 +30,9 @@ final class AppState {
     private let diarizer = SpeakerDiarizer()
     private let aligner = DiarizationAligner()
     private let summarizer = LLMSummarizer()
+    private let ollama = OllamaManager.shared
     private let db = DatabaseManager()
     private let modelManager = ModelManager.shared
-    private let llmModelManager = LLMModelManager.shared
     private var currentAudioPath: String?
     private var currentCallId: Int64?
     private var errorClearTask: Task<Void, Never>?
@@ -60,7 +62,13 @@ final class AppState {
             modelLoaded = transcriber.loadModel(at: modelManager.whisperModelURL.path)
         }
         diarizationAvailable = diarizer.findPython() != nil && diarizer.findScript() != nil
-        llmAvailable = summarizer.findPython() != nil && summarizer.findScript() != nil && llmModelManager.modelExists
+        ollamaRunning = await ollama.checkRunning()
+        if ollamaRunning {
+            availableModels = (try? await ollama.listModels()) ?? []
+            if selectedModel == nil || !availableModels.contains(where: { $0.name == selectedModel?.name }) {
+                selectedModel = availableModels.first
+            }
+        }
     }
 
     func downloadModel() async {
@@ -141,12 +149,12 @@ final class AppState {
                 }
             }
 
-            if llmAvailable {
+            if ollamaRunning, let model = selectedModel {
                 do {
                     var segments = db.fetchSegments(for: callId)
                     if segments.isEmpty { segments = transcriptSegments }
                     let jsonPath = try writeTranscriptJSON(segments: segments)
-                    let summary = try await summarizer.summarize(transcriptPath: jsonPath)
+                    let summary = try await summarizer.summarize(transcriptPath: jsonPath, model: model.name)
                     db.saveSummary(callId: callId, summary: summary)
                     try? FileManager.default.removeItem(atPath: jsonPath)
                 } catch {

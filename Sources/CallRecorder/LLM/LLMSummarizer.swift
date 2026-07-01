@@ -8,95 +8,68 @@ struct CallSummary: Codable, Hashable {
 }
 
 enum LLMError: LocalizedError {
-    case pythonNotFound
-    case scriptNotFound
-    case modelNotDownloaded
-    case executionFailed(String)
+    case ollamaNotRunning
+    case noModelSelected
+    case generationFailed(String)
     case invalidOutput
-    case setupRequired
 
     var errorDescription: String? {
         switch self {
-        case .pythonNotFound: return "Python 3 not found."
-        case .scriptNotFound: return "Summarizer script not found."
-        case .modelNotDownloaded: return "LLM model not downloaded yet."
-        case .executionFailed(let msg): return "Summarization failed: \(msg)"
-        case .invalidOutput: return "Invalid summary output."
-        case .setupRequired: return "Run Scripts/setup.sh to install MLX."
+        case .ollamaNotRunning: return "Ollama not running. Start with: ollama serve"
+        case .noModelSelected: return "No LLM model selected."
+        case .generationFailed(let msg): return "LLM error: \(msg)"
+        case .invalidOutput: return "Invalid summary JSON from LLM."
         }
     }
 }
 
 final class LLMSummarizer {
-    private let queue = DispatchQueue(label: "llm", qos: .userInitiated)
+    private let ollama = OllamaManager.shared
 
-    func findScript() -> URL? {
-        let candidates = [
-            URL(fileURLWithPath: "Scripts/summarize.py"),
-            URL(fileURLWithPath: "../Scripts/summarize.py"),
-            Bundle.main.resourceURL?.appending(component: "Scripts/summarize.py"),
-        ]
-        for url in candidates {
-            if let url, FileManager.default.fileExists(atPath: url.path) {
-                return url
-            }
+    func summarize(transcriptPath: String, model: String) async throws -> CallSummary {
+        let transcript = try String(contentsOfFile: transcriptPath, encoding: .utf8)
+
+        let systemPrompt = """
+        You are a meeting assistant. Given a transcript with speaker labels, produce:
+        1. A concise summary (3-5 sentences).
+        2. Key decisions made.
+        3. A list of action items with owners if clear, otherwise mark as "Team".
+        4. A separate per-person to-do list for each speaker.
+
+        Output ONLY valid JSON. No markdown, no explanation. Use this exact structure:
+        {
+          "summary": "...",
+          "decisions": ["...", "..."],
+          "team_todos": ["...", "..."],
+          "per_person_todos": {
+            "SPEAKER_00": ["...", "..."],
+            "SPEAKER_01": ["..."],
+            ...
+          }
         }
-        return nil
-    }
+        """
 
-    func findPython() -> URL? {
-        let candidates = [
-            URL(fileURLWithPath: "/usr/local/bin/python3"),
-            URL(fileURLWithPath: "/opt/homebrew/bin/python3"),
-            URL(fileURLWithPath: "/usr/bin/python3"),
-            URL(fileURLWithPath: "Scripts/.venv/bin/python3"),
-        ]
-        for url in candidates {
-            if FileManager.default.fileExists(atPath: url.path) {
-                return url
-            }
+        let fullPrompt = """
+        \(systemPrompt)
+
+        Transcript:
+        \(transcript)
+
+        JSON:
+        """
+
+        let raw = try await ollama.generate(model: model, prompt: fullPrompt)
+        let cleaned = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let data = cleaned.data(using: .utf8),
+              let result = try? JSONDecoder().decode(CallSummary.self, from: data)
+        else {
+            throw LLMError.invalidOutput
         }
-        return nil
-    }
-
-    func summarize(transcriptPath: String) async throws -> CallSummary {
-        guard let scriptURL = findScript() else { throw LLMError.scriptNotFound }
-        guard let pythonURL = findPython() else { throw LLMError.pythonNotFound }
-
-        return try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                let process = Process()
-                process.executableURL = pythonURL
-                process.arguments = [scriptURL.path, transcriptPath]
-
-                let outPipe = Pipe()
-                let errPipe = Pipe()
-                process.standardOutput = outPipe
-                process.standardError = errPipe
-
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-
-                    let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
-                    let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
-
-                    guard process.terminationStatus == 0 else {
-                        let errMsg = String(data: errData, encoding: .utf8) ?? "Unknown error"
-                        continuation.resume(throwing: LLMError.executionFailed(errMsg))
-                        return
-                    }
-
-                    let decoder = JSONDecoder()
-                    guard let result = try? decoder.decode(CallSummary.self, from: outData) else {
-                        continuation.resume(throwing: LLMError.invalidOutput)
-                        return
-                    }
-                    continuation.resume(returning: result)
-                } catch {
-                    continuation.resume(throwing: LLMError.executionFailed(error.localizedDescription))
-                }
-            }
-        }
+        return result
     }
 }

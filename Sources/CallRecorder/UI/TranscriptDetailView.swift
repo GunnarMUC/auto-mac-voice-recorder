@@ -34,6 +34,41 @@ struct TranscriptDetailView: View {
                 }
             }
 
+            if let summary = call.summary {
+                Section("Summary") {
+                    Text(summary)
+                        .textSelection(.enabled)
+                }
+            }
+
+            if let decisions = call.decisions, !decisions.isEmpty {
+                Section("Decisions") {
+                    ForEach(decisions, id: \.self) { d in
+                        Label(d, systemImage: "checkmark.circle")
+                    }
+                }
+            }
+
+            if let todos = call.teamTodos, !todos.isEmpty {
+                Section("Team To-Dos") {
+                    ForEach(todos, id: \.self) { t in
+                        Label(t, systemImage: "person.3")
+                    }
+                }
+            }
+
+            if let personTodos = call.perPersonTodos {
+                ForEach(Array(personTodos.keys).sorted(), id: \.self) { speaker in
+                    if let items = personTodos[speaker], !items.isEmpty {
+                        Section("\(speaker) To-Dos") {
+                            ForEach(items, id: \.self) { item in
+                                Label(item, systemImage: "person")
+                            }
+                        }
+                    }
+                }
+            }
+
             if call.transcriptSegments.isEmpty && call.status == .completed {
                 Section {
                     Text("No transcript segments found.")

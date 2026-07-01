@@ -40,6 +40,9 @@ struct MenuBarContentView: View {
 
     var body: some View {
         devicesMenu
+        if state.ollamaRunning && !state.availableModels.isEmpty {
+            llmMenu
+        }
 
         switch state.recordingState {
         case .idle:
@@ -89,6 +92,25 @@ struct MenuBarContentView: View {
                     HStack {
                         Text(device.name)
                         if device.id == state.selectedDevice?.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - LLM Model
+
+    private var llmMenu: some View {
+        Menu(state.selectedModel?.name ?? "Select Summary Model") {
+            ForEach(state.availableModels) { model in
+                Button {
+                    state.selectedModel = model
+                } label: {
+                    HStack {
+                        Text(model.name)
+                        if model.name == state.selectedModel?.name {
                             Image(systemName: "checkmark")
                         }
                     }
