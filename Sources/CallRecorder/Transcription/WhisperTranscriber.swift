@@ -33,9 +33,6 @@ final class WhisperTranscriber {
             throw TranscriptionError.invalidAudio
         }
 
-        let duration = Double(samples.count) / 16000.0
-        print("DEBUG: Loaded \(samples.count) samples from \(path) — \(String(format: "%.1f", duration))s")
-
         return try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
@@ -44,16 +41,13 @@ final class WhisperTranscriber {
                 params.n_threads = Int32(ProcessInfo.processInfo.processorCount)
 
                 let nSamples = Int32(samples.count)
-                print("DEBUG: Calling whisper_full with \(nSamples) samples, threads=\(params.n_threads)")
                 let ret = whisper_full(ctx, params, samples, nSamples)
-                print("DEBUG: whisper_full returned \(ret)")
                 guard ret == 0 else {
                     continuation.resume(throwing: TranscriptionError.transcriptionFailed(ret))
                     return
                 }
 
                 let nSegments = whisper_full_n_segments(ctx)
-                print("DEBUG: Got \(nSegments) segments")
                 for i in 0..<nSegments {
                     let t0 = whisper_full_get_segment_t0(ctx, i)
                     let t1 = whisper_full_get_segment_t1(ctx, i)
@@ -61,7 +55,6 @@ final class WhisperTranscriber {
                     let text = String(cString: textPtr)
                     let start = Double(t0) / 100.0
                     let end = Double(t1) / 100.0
-                    print("DEBUG: Segment \(i): [\(start)-\(end)] \(text.prefix(80))")
                     onSegment(text, start, end)
                 }
                 continuation.resume()

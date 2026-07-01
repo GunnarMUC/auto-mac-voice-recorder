@@ -127,7 +127,6 @@ final class AppState {
         }
 
         AudioRecorder.writeWAV(to: path, samples: samples, sampleRate: sampleRate)
-        print("DEBUG: WAV saved to \(path) — \(samples.count) raw samples at \(sampleRate)Hz")
 
         let duration = samples.isEmpty ? 0 : Int(Double(samples.count) / sampleRate)
 
