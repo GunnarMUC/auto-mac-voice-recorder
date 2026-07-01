@@ -13,6 +13,7 @@ final class AppState {
 
     var recordingState: RecordingState = .idle
     var modelLoaded: Bool = false
+    var diarizationAvailable: Bool = false
     var availableDevices: [AudioDevice] = []
     var selectedDevice: AudioDevice?
     var calls: [CallRecord] = []
@@ -23,6 +24,8 @@ final class AppState {
 
     private let recorder = AudioRecorder()
     let transcriber = WhisperTranscriber()
+    private let diarizer = SpeakerDiarizer()
+    private let aligner = DiarizationAligner()
     private let db = DatabaseManager()
     private let modelManager = ModelManager.shared
     private var currentAudioPath: String?
@@ -53,6 +56,7 @@ final class AppState {
         if modelManager.modelExists {
             modelLoaded = transcriber.loadModel(at: modelManager.whisperModelURL.path)
         }
+        diarizationAvailable = diarizer.findPython() != nil && diarizer.findScript() != nil
     }
 
     func downloadModel() async {
@@ -118,6 +122,20 @@ final class AppState {
             try await transcriber.transcribe(audioFile: audioPath) { [db] text, start, end in
                 db.insertSegment(callId: callId, speakerId: "SPEAKER_00", startTime: start, endTime: end, text: text)
             }
+
+            if diarizationAvailable {
+                do {
+                    let speakerSegments = try await diarizer.diarize(audioFile: audioPath)
+                    let transcriptSegments = db.fetchSegments(for: callId)
+                    let aligned = aligner.align(transcriptSegments: transcriptSegments, speakerSegments: speakerSegments)
+                    for seg in aligned {
+                        db.updateSegmentSpeaker(callId: callId, startTime: seg.startTime, speaker: seg.speaker)
+                    }
+                } catch {
+                    print("Diarization skipped: \(error.localizedDescription)")
+                }
+            }
+
             db.markCallCompleted(id: callId)
             recordingState = .idle
             loadCalls()

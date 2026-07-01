@@ -105,6 +105,13 @@ final class DatabaseManager {
         }
     }
 
+    func updateSegmentSpeaker(callId: Int64, startTime: Double, speaker: String) {
+        _ = queue.sync {
+            let segment = segments.filter(self.callId == callId && self.startTime == startTime)
+            _ = try? db?.run(segment.update(self.speakerId <- speaker))
+        }
+    }
+
     func insertSegment(callId: Int64, speakerId: String, startTime: Double, endTime: Double, text: String) {
         _ = queue.sync {
             _ = try? db?.run(segments.insert(
