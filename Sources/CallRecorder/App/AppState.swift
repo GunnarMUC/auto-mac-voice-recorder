@@ -58,8 +58,8 @@ final class AppState {
     }
 
     func checkModel() async {
-        if modelManager.modelExists {
-            modelLoaded = transcriber.loadModel(at: modelManager.whisperModelURL.path)
+        if let path = modelManager.resolveModelPath() {
+            modelLoaded = transcriber.loadModel(at: path)
         }
         diarizationAvailable = diarizer.findPython() != nil && diarizer.findScript() != nil
         await refreshOllama()
@@ -85,7 +85,9 @@ final class AppState {
                     self.recordingState = .needsDownload(progress: p)
                 }
             }
-            modelLoaded = transcriber.loadModel(at: modelManager.whisperModelURL.path)
+            if let path = modelManager.resolveModelPath() {
+                modelLoaded = transcriber.loadModel(at: path)
+            }
             recordingState = .idle
         } catch {
             errorMessage = "Download failed: \(error.localizedDescription)"
@@ -94,7 +96,8 @@ final class AppState {
     }
 
     func startRecording() {
-        let audioDir = modelManager.modelsDir
+        let audioDir = modelManager.whisperModelURL
+            .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appending(component: "audio")
         try? FileManager.default.createDirectory(at: audioDir, withIntermediateDirectories: true)

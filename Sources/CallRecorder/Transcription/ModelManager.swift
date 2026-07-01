@@ -3,30 +3,46 @@ import Foundation
 final class ModelManager {
     static let shared = ModelManager()
 
-    let modelsDir: URL
-    let whisperModelURL: URL
+    var whisperModelURL: URL { _whisperModelURL }
+    var modelsDir: URL { _modelsDir }
 
-    private let fallbackURL: URL
+    private let _modelsDir: URL
+    private let _whisperModelURL: URL
+    private let fallbackCandidates: [URL]
 
     private init() {
         let fm = FileManager.default
         let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appending(component: "CallRecorder", directoryHint: .isDirectory)
-        modelsDir = appSupport.appending(component: "models", directoryHint: .isDirectory)
-        whisperModelURL = modelsDir.appending(component: "ggml-base.bin")
+        _modelsDir = appSupport.appending(component: "models", directoryHint: .isDirectory)
+        _whisperModelURL = _modelsDir.appending(component: "ggml-base.bin")
 
-        let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        fallbackURL = cwd.appending(path: "Dependencies/whisper.spm/models/ggml-base.bin")
+        let cwd = URL(fileURLWithPath: fm.currentDirectoryPath)
+        fallbackCandidates = [
+            cwd.appending(path: "Dependencies/whisper.spm/models/ggml-base.bin"),
+            cwd.appending(path: "../Dependencies/whisper.spm/models/ggml-base.bin"),
+            Bundle.main.resourceURL?.appending(path: "Dependencies/whisper.spm/models/ggml-base.bin") ?? cwd,
+        ].filter { fm.fileExists(atPath: $0.path) }
 
-        try? fm.createDirectory(at: modelsDir, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: _modelsDir, withIntermediateDirectories: true)
 
-        if !fm.fileExists(atPath: whisperModelURL.path) && fm.fileExists(atPath: fallbackURL.path) {
-            try? fm.copyItem(at: fallbackURL, to: whisperModelURL)
+        if !fm.fileExists(atPath: _whisperModelURL.path), let fallback = fallbackCandidates.first {
+            try? fm.copyItem(at: fallback, to: _whisperModelURL)
         }
     }
 
     var modelExists: Bool {
-        FileManager.default.fileExists(atPath: whisperModelURL.path)
+        let fm = FileManager.default
+        if fm.fileExists(atPath: _whisperModelURL.path) { return true }
+        if let fallback = fallbackCandidates.first, fm.fileExists(atPath: fallback.path) { return true }
+        return false
+    }
+
+    func resolveModelPath() -> String? {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: _whisperModelURL.path) { return _whisperModelURL.path }
+        if let fallback = fallbackCandidates.first, fm.fileExists(atPath: fallback.path) { return fallback.path }
+        return nil
     }
 
     func downloadIfNeeded(progress: @escaping (Double) -> Void) async throws {
@@ -61,6 +77,6 @@ final class ModelManager {
             try handle.write(contentsOf: buffer)
         }
         try handle.close()
-        try FileManager.default.moveItem(at: tmpURL, to: whisperModelURL)
+        try FileManager.default.moveItem(at: tmpURL, to: _whisperModelURL)
     }
 }
