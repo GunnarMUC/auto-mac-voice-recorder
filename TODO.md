@@ -2,8 +2,10 @@
 
 ## Phase 3 (Current)
 
-- [ ] **Better language detection (DE/EN)** — Upgrade Whisper model from `ggml-base.bin` to `ggml-small.bin` (~466 MB) for improved German/English accuracy. Current base model sometimes misidentifies languages.
-- [ ] **Speaker manual labeling** — Rename `SPEAKER_00` to real names (e.g., "Alice"). Add UI to edit speaker names and persist them.
+- [x] **Better language detection (DE/EN)** — Model-Picker für `ggml-base.bin` und `ggml-small.bin`. Small model (~466 MB) verbessert DE/EN-Erkennung.
+- [x] **Speaker manual labeling** — SPEAKER_00 → freier Name. Editierbar im Transcript-View, persistiert in DB.
+- [x] **To-Do Checkboxen** — Action Items mit ✓ und Durchstreichen, persistiert in DB.
+- [x] **Export to Markdown** — Exportiert Transcript + Summary + ToDos als .md auf den Desktop.
 
 ## Phase 4 (Future)
 
