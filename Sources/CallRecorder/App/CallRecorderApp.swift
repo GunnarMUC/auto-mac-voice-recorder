@@ -104,6 +104,10 @@ struct MenuBarContentView: View {
 
     private var llmMenu: some View {
         Menu(state.selectedModel?.name ?? "Select Summary Model") {
+            Button("Refresh Models") {
+                Task { await state.refreshOllama() }
+            }
+            Divider()
             ForEach(state.availableModels) { model in
                 Button {
                     state.selectedModel = model

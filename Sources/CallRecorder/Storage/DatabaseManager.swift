@@ -61,7 +61,7 @@ final class DatabaseManager {
             t.column(text)
             t.foreignKey(callId, references: calls, id)
         })
-        try db?.run(calls.addColumn(summaryJson, defaultValue: nil))
+        try? db?.run(calls.addColumn(summaryJson, defaultValue: nil))
     }
 
     func insertCall(uuid: String, audioFilePath: String) -> Int64? {

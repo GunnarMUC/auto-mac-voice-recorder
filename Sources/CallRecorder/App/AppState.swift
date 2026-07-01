@@ -62,12 +62,18 @@ final class AppState {
             modelLoaded = transcriber.loadModel(at: modelManager.whisperModelURL.path)
         }
         diarizationAvailable = diarizer.findPython() != nil && diarizer.findScript() != nil
+        await refreshOllama()
+    }
+
+    func refreshOllama() async {
         ollamaRunning = await ollama.checkRunning()
         if ollamaRunning {
             availableModels = (try? await ollama.listModels()) ?? []
             if selectedModel == nil || !availableModels.contains(where: { $0.name == selectedModel?.name }) {
                 selectedModel = availableModels.first
             }
+        } else {
+            availableModels = []
         }
     }
 
