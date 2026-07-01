@@ -18,6 +18,7 @@ final class DatabaseManager {
     private let status = Expression<String>("status")
     private let summaryJson = Expression<String?>("summary_json")
     private let todosJson = Expression<String?>("todos_json")
+    private let speakerNames = Expression<String?>("speaker_names")
     private let createdAt = Expression<Date>("created_at")
 
     private let segId = Expression<Int64>("id")
@@ -64,6 +65,7 @@ final class DatabaseManager {
         })
         try? db?.run(calls.addColumn(summaryJson, defaultValue: nil))
         try? db?.run(calls.addColumn(todosJson, defaultValue: nil))
+        try? db?.run(calls.addColumn(speakerNames, defaultValue: nil))
     }
 
     func insertCall(uuid: String, audioFilePath: String) -> Int64? {
@@ -92,6 +94,30 @@ final class DatabaseManager {
                 self.endedAt <- endedAt,
                 self.durationSeconds <- duration
             ))
+        }
+    }
+
+    func saveSpeakerNames(callId: Int64, names: [String: String]) {
+        _ = queue.sync {
+            guard let data = try? JSONEncoder().encode(names),
+                  let json = String(data: data, encoding: .utf8)
+            else { return }
+            let call = calls.filter(self.id == callId)
+            _ = try? db?.run(call.update(self.speakerNames <- json))
+        }
+    }
+
+    func fetchSpeakerNames(for callId: Int64) -> [String: String] {
+        queue.sync {
+            guard let db else { return [:] }
+            for row in try! db.prepare(calls.filter(self.id == callId)) {
+                guard let json = row[speakerNames],
+                      let data = json.data(using: .utf8),
+                      let names = try? JSONDecoder().decode([String: String].self, from: data)
+                else { continue }
+                return names
+            }
+            return [:]
         }
     }
 
@@ -190,6 +216,7 @@ final class DatabaseManager {
                         teamTodos: summary?.team_todos,
                         perPersonTodos: summary?.per_person_todos,
                         actionItems: [],
+                        speakerNames: [:],
                         transcriptSegments: []
                     ))
                 }

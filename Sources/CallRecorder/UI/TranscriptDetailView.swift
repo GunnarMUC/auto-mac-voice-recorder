@@ -49,6 +49,24 @@ struct TranscriptDetailView: View {
                 }
             }
 
+            let uniqueSpeakers = Array(Set(call.transcriptSegments.map(\.speakerId))).sorted()
+            if !uniqueSpeakers.isEmpty {
+                Section("Speaker Names") {
+                    ForEach(uniqueSpeakers, id: \.self) { speakerId in
+                        HStack {
+                            Text(speakerId + ":")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextField("Name", text: Binding(
+                                get: { call.speakerNames[speakerId] ?? "" },
+                                set: { state.renameSpeaker(callId: call.id, oldId: speakerId, newName: $0) }
+                            ))
+                            .textFieldStyle(.roundedBorder)
+                        }
+                    }
+                }
+            }
+
             if !call.actionItems.isEmpty {
                 Section("To-Dos") {
                     ForEach(call.actionItems) { item in
@@ -92,7 +110,7 @@ struct TranscriptDetailView: View {
                 Section {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Text(seg.speakerId)
+                            Text(speakerDisplayName(call, seg.speakerId))
                                 .font(.caption)
                                 .fontWeight(.semibold)
                                 .foregroundStyle(.blue)
@@ -154,6 +172,10 @@ struct TranscriptDetailView: View {
             .replacingOccurrences(of: ":", with: "-")
             .prefix(19)
         return "Call_\(dateStr)"
+    }
+
+    private func speakerDisplayName(_ call: CallRecord, _ id: String) -> String {
+        call.speakerNames[id] ?? id
     }
 
     private func timestamp(_ start: TimeInterval, _ end: TimeInterval) -> String {

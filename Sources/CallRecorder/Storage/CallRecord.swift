@@ -14,6 +14,7 @@ struct CallRecord: Identifiable, Codable, Hashable {
     var teamTodos: [String]?
     var perPersonTodos: [String: [String]]?
     var actionItems: [ActionItem]
+    var speakerNames: [String: String]
     var transcriptSegments: [TranscriptSegment]
 
     var formattedDate: String {

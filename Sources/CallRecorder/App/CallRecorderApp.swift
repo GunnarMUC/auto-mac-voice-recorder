@@ -40,6 +40,7 @@ struct MenuBarContentView: View {
 
     var body: some View {
         devicesMenu
+        whisperMenu
         llmMenu
 
         Divider()
@@ -90,6 +91,47 @@ struct MenuBarContentView: View {
                         if device.id == state.selectedDevice?.id {
                             Image(systemName: "checkmark")
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Whisper Model
+
+    @ViewBuilder
+    private var whisperMenu: some View {
+        if state.whisperModels.isEmpty {
+            Menu("Whisper Model") {
+                ForEach(ModelManager.models) { model in
+                    Button {
+                        Task { await state.downloadModel(model) }
+                    } label: {
+                        Text("Download \(model.name) — \(model.size)")
+                    }
+                }
+            }
+        } else {
+            Menu(state.selectedWhisperModel?.name ?? "Whisper Model") {
+                ForEach(state.whisperModels) { model in
+                    Button {
+                        state.switchWhisperModel(to: model)
+                    } label: {
+                        HStack {
+                            Text(model.name)
+                            if model.id == state.selectedWhisperModel?.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+                Divider()
+                Text("Download more:").foregroundStyle(.secondary)
+                ForEach(ModelManager.models.filter { !state.whisperModels.contains($0) }) { model in
+                    Button {
+                        Task { await state.downloadModel(model) }
+                    } label: {
+                        Text("Download \(model.name) — \(model.size)")
                     }
                 }
             }
@@ -167,14 +209,9 @@ struct MenuBarContentView: View {
     // MARK: - Other items
 
     private var downloadButton: some View {
-        VStack(spacing: 4) {
-            Text("Whisper model required")
-                .font(.caption)
-            Text("~141 MB download")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Button("Download Model") {
-                Task { await state.downloadModel() }
+        ForEach(ModelManager.models) { model in
+            Button("Download \(model.name) (\(model.size))") {
+                Task { await state.downloadModel(model) }
             }
         }
     }

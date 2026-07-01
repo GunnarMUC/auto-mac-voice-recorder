@@ -1,59 +1,68 @@
 import Foundation
 
+struct WhisperModel: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let filename: String
+    let size: String
+    let downloadURL: String
+
+    func url(in dir: URL) -> URL { dir.appending(component: filename) }
+}
+
 final class ModelManager {
     static let shared = ModelManager()
 
-    var whisperModelURL: URL { _whisperModelURL }
-    var modelsDir: URL { _modelsDir }
+    static let models: [WhisperModel] = [
+        WhisperModel(id: "base", name: "Base (fast)", filename: "ggml-base.bin", size: "141 MB",
+                     downloadURL: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"),
+        WhisperModel(id: "small", name: "Small (accurate)", filename: "ggml-small.bin", size: "466 MB",
+                     downloadURL: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"),
+    ]
 
-    private let _modelsDir: URL
-    private let _whisperModelURL: URL
-    private let fallbackCandidates: [URL]
+    let modelsDir: URL
+    private let fm = FileManager.default
 
     private init() {
-        let fm = FileManager.default
         let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appending(component: "CallRecorder", directoryHint: .isDirectory)
-        _modelsDir = appSupport.appending(component: "models", directoryHint: .isDirectory)
-        _whisperModelURL = _modelsDir.appending(component: "ggml-base.bin")
+        modelsDir = appSupport.appending(component: "models", directoryHint: .isDirectory)
+        try? fm.createDirectory(at: modelsDir, withIntermediateDirectories: true)
 
         let cwd = URL(fileURLWithPath: fm.currentDirectoryPath)
-        fallbackCandidates = [
-            cwd.appending(path: "Dependencies/whisper.spm/models/ggml-base.bin"),
-            cwd.appending(path: "../Dependencies/whisper.spm/models/ggml-base.bin"),
-            Bundle.main.resourceURL?.appending(path: "Dependencies/whisper.spm/models/ggml-base.bin") ?? cwd,
-        ].filter { fm.fileExists(atPath: $0.path) }
-
-        try? fm.createDirectory(at: _modelsDir, withIntermediateDirectories: true)
-
-        if !fm.fileExists(atPath: _whisperModelURL.path), let fallback = fallbackCandidates.first {
-            try? fm.copyItem(at: fallback, to: _whisperModelURL)
+        for model in Self.models {
+            let dest = model.url(in: modelsDir)
+            if fm.fileExists(atPath: dest.path) { continue }
+            let fallback = cwd.appending(path: "Dependencies/whisper.spm/models/\(model.filename)")
+            if fm.fileExists(atPath: fallback.path) {
+                try? fm.copyItem(at: fallback, to: dest)
+            }
         }
     }
 
-    var modelExists: Bool {
-        let fm = FileManager.default
-        if fm.fileExists(atPath: _whisperModelURL.path) { return true }
-        if let fallback = fallbackCandidates.first, fm.fileExists(atPath: fallback.path) { return true }
-        return false
+    func modelExists(_ model: WhisperModel) -> Bool {
+        fm.fileExists(atPath: model.url(in: modelsDir).path)
     }
 
-    func resolveModelPath() -> String? {
-        let fm = FileManager.default
-        if fm.fileExists(atPath: _whisperModelURL.path) { return _whisperModelURL.path }
-        if let fallback = fallbackCandidates.first, fm.fileExists(atPath: fallback.path) { return fallback.path }
+    func resolvePath(for model: WhisperModel) -> String? {
+        let url = model.url(in: modelsDir)
+        if fm.fileExists(atPath: url.path) { return url.path }
+
+        let cwd = URL(fileURLWithPath: fm.currentDirectoryPath)
+        let fallback = cwd.appending(path: "Dependencies/whisper.spm/models/\(model.filename)")
+        if fm.fileExists(atPath: fallback.path) { return fallback.path }
         return nil
     }
 
-    func downloadIfNeeded(progress: @escaping (Double) -> Void) async throws {
-        if modelExists { return }
-        let url = URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin")!
-        let tmpURL = FileManager.default.temporaryDirectory.appending(component: "ggml-base.bin")
-        if FileManager.default.fileExists(atPath: tmpURL.path) {
-            try FileManager.default.removeItem(at: tmpURL)
-        }
+    func download(_ model: WhisperModel, progress: @escaping (Double) -> Void) async throws {
+        let dest = model.url(in: modelsDir)
+        if fm.fileExists(atPath: dest.path) { return }
 
-        FileManager.default.createFile(atPath: tmpURL.path, contents: nil)
+        let tmpURL = fm.temporaryDirectory.appending(component: model.filename)
+        if fm.fileExists(atPath: tmpURL.path) { try fm.removeItem(at: tmpURL) }
+
+        let url = URL(string: model.downloadURL)!
+        fm.createFile(atPath: tmpURL.path, contents: nil)
         let handle = try FileHandle(forWritingTo: tmpURL)
         defer { try? handle.close() }
 
@@ -68,15 +77,17 @@ final class ModelManager {
                 try handle.write(contentsOf: buffer)
                 written += Int64(buffer.count)
                 buffer.removeAll()
-                if expected > 0 {
-                    progress(Double(written) / Double(expected))
-                }
+                if expected > 0 { progress(Double(written) / Double(expected)) }
             }
         }
-        if !buffer.isEmpty {
-            try handle.write(contentsOf: buffer)
-        }
+        if !buffer.isEmpty { try handle.write(contentsOf: buffer) }
         try handle.close()
-        try FileManager.default.moveItem(at: tmpURL, to: _whisperModelURL)
+        try fm.moveItem(at: tmpURL, to: dest)
     }
+
+    func availableModels() -> [WhisperModel] {
+        Self.models.filter { modelExists($0) }
+    }
+
+    var anyModelExists: Bool { !availableModels().isEmpty }
 }

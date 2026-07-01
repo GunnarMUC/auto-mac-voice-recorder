@@ -13,6 +13,8 @@ final class AppState {
 
     var recordingState: RecordingState = .idle
     var modelLoaded: Bool = false
+    var whisperModels: [WhisperModel] = []
+    var selectedWhisperModel: WhisperModel?
     var diarizationAvailable: Bool = false
     var ollamaRunning: Bool = false
     var availableModels: [OllamaModel] = []
@@ -58,11 +60,22 @@ final class AppState {
     }
 
     func checkModel() async {
-        if let path = modelManager.resolveModelPath() {
+        whisperModels = modelManager.availableModels()
+        if selectedWhisperModel == nil || !whisperModels.contains(where: { $0.id == selectedWhisperModel?.id }) {
+            selectedWhisperModel = whisperModels.first
+        }
+        if let model = selectedWhisperModel, let path = modelManager.resolvePath(for: model) {
             modelLoaded = transcriber.loadModel(at: path)
         }
         diarizationAvailable = diarizer.findPython() != nil && diarizer.findScript() != nil
         await refreshOllama()
+    }
+
+    func switchWhisperModel(to model: WhisperModel) {
+        guard let path = modelManager.resolvePath(for: model) else { return }
+        transcriber.unload()
+        modelLoaded = transcriber.loadModel(at: path)
+        selectedWhisperModel = model
     }
 
     func refreshOllama() async {
@@ -77,16 +90,18 @@ final class AppState {
         }
     }
 
-    func downloadModel() async {
+    func downloadModel(_ model: WhisperModel) async {
         recordingState = .needsDownload(progress: 0)
         do {
-            try await modelManager.downloadIfNeeded { p in
+            try await modelManager.download(model) { p in
                 Task { @MainActor in
                     self.recordingState = .needsDownload(progress: p)
                 }
             }
-            if let path = modelManager.resolveModelPath() {
+            if let path = modelManager.resolvePath(for: model) {
                 modelLoaded = transcriber.loadModel(at: path)
+                selectedWhisperModel = model
+                whisperModels = modelManager.availableModels()
             }
             recordingState = .idle
         } catch {
@@ -96,8 +111,7 @@ final class AppState {
     }
 
     func startRecording() {
-        let audioDir = modelManager.whisperModelURL
-            .deletingLastPathComponent()
+        let audioDir = modelManager.modelsDir
             .deletingLastPathComponent()
             .appending(component: "audio")
         try? FileManager.default.createDirectory(at: audioDir, withIntermediateDirectories: true)
@@ -215,7 +229,15 @@ final class AppState {
         var c = call
         c.transcriptSegments = db.fetchSegments(for: call.id)
         c.actionItems = db.fetchTodos(for: call.id)
+        c.speakerNames = db.fetchSpeakerNames(for: call.id)
         selectedCall = c
+    }
+
+    func renameSpeaker(callId: Int64, oldId: String, newName: String) {
+        guard var call = selectedCall else { return }
+        call.speakerNames[oldId] = newName
+        selectedCall = call
+        db.saveSpeakerNames(callId: callId, names: call.speakerNames)
     }
 
     func toggleActionItem(_ item: ActionItem) {
