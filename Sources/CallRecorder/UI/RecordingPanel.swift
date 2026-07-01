@@ -9,6 +9,7 @@ struct RecordingPanel: View {
         VStack(spacing: 12) {
             switch state.recordingState {
             case .idle:
+                devicePicker
                 if !state.modelLoaded {
                     downloadButton
                 } else {
@@ -30,6 +31,52 @@ struct RecordingPanel: View {
         }
         .padding()
         .frame(width: 260)
+    }
+
+    @ViewBuilder
+    private var devicePicker: some View {
+        if !state.availableDevices.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Image(systemName: "speaker.wave.2")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                    Text("Audio Input")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Refresh") { state.refreshDevices() }
+                        .font(.caption2)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.blue)
+                }
+
+                Picker("", selection: Binding(
+                    get: { state.selectedDevice ?? state.availableDevices.first },
+                    set: { state.selectedDevice = $0 }
+                )) {
+                    ForEach(state.availableDevices) { device in
+                        HStack {
+                            Image(systemName: deviceIcon(device))
+                            Text(device.name)
+                        }
+                        .tag(device as AudioDevice?)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+            .padding(8)
+            .background(Color(.controlBackgroundColor))
+            .clipShape(.rect(cornerRadius: 6))
+        }
+    }
+
+    private func deviceIcon(_ device: AudioDevice) -> String {
+        let lower = device.name.lowercased()
+        if lower.contains("blackhole") || lower.contains("aggregate") { return "square.stack.3d.up" }
+        if lower.contains("microphone") || lower.contains("mic") || lower.contains("built-in") { return "internaldrive" }
+        return "speaker.wave.2"
     }
 
     private var startButton: some View {
@@ -57,6 +104,11 @@ struct RecordingPanel: View {
 
     private func recordingView(startedAt: Date) -> some View {
         VStack(spacing: 8) {
+            if let device = state.selectedDevice {
+                Text(device.name)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Text(timeString(from: startedAt, at: tick))
                 .font(.largeTitle)
                 .monospacedDigit()

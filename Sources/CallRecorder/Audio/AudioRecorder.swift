@@ -6,12 +6,17 @@ final class AudioRecorder {
     private var samples: [Float] = []
     private var sampleRate: Double = 0
 
-    func startRecording() throws {
+    func startRecording(device: AudioDevice? = nil) throws {
+        samples.removeAll()
+
+        if let device {
+            AudioDeviceManager.setInputDevice(device, on: engine)
+        }
+
         let input = engine.inputNode
         let fmt = input.outputFormat(forBus: 0)
         sampleRate = fmt.sampleRate
         let channels = Int(fmt.channelCount)
-        samples.removeAll()
 
         input.installTap(onBus: 0, bufferSize: 4096, format: fmt) { [weak self] buffer, _ in
             guard let self, let data = buffer.floatChannelData else { return }

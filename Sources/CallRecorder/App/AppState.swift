@@ -13,6 +13,8 @@ final class AppState {
 
     var recordingState: RecordingState = .idle
     var modelLoaded: Bool = false
+    var availableDevices: [AudioDevice] = []
+    var selectedDevice: AudioDevice?
     var calls: [CallRecord] = []
     var selectedCall: CallRecord?
     var errorMessage: String? {
@@ -28,7 +30,15 @@ final class AppState {
     private var errorClearTask: Task<Void, Never>?
 
     init() {
+        refreshDevices()
         loadCalls()
+    }
+
+    func refreshDevices() {
+        availableDevices = AudioDeviceManager.listInputDevices()
+        if selectedDevice == nil || !availableDevices.contains(where: { $0.id == selectedDevice?.id }) {
+            selectedDevice = AudioDeviceManager.currentInputDevice() ?? availableDevices.first
+        }
     }
 
     private func clearErrorAfter() {
@@ -72,7 +82,7 @@ final class AppState {
         currentAudioPath = path
 
         do {
-            try recorder.startRecording()
+            try recorder.startRecording(device: selectedDevice)
             recordingState = .recording(startedAt: Date())
             currentCallId = db.insertCall(uuid: UUID().uuidString, audioFilePath: path)
         } catch {
