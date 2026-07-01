@@ -20,37 +20,61 @@ struct OllamaGenerateResponse: Codable {
 
 final class OllamaManager {
     static let shared = OllamaManager()
-    private let base = URL(string: "http://localhost:11434")!
+
+    private let hosts = [
+        "http://127.0.0.1:11434",
+        "http://localhost:11434",
+    ]
 
     func checkRunning() async -> Bool {
-        guard let url = URL(string: "http://localhost:11434/api/tags") else { return false }
-        do {
-            let (_, response) = try await URLSession.shared.data(from: url)
-            return (response as? HTTPURLResponse)?.statusCode == 200
-        } catch {
-            return false
+        for host in hosts {
+            guard let url = URL(string: "\(host)/api/tags") else { continue }
+            do {
+                let (_, response) = try await URLSession.shared.data(from: url)
+                if (response as? HTTPURLResponse)?.statusCode == 200 { return true }
+            } catch {
+                continue
+            }
         }
+        return false
     }
 
     func listModels() async throws -> [OllamaModel] {
-        let (data, _) = try await URLSession.shared.data(from: base.appendingPathComponent("api/tags"))
-        let decoded = try JSONDecoder().decode(OllamaListResponse.self, from: data)
-        return decoded.models.map { OllamaModel(name: $0.name) }
+        var lastError: Error? = nil
+        for host in hosts {
+            guard let url = URL(string: "\(host)/api/tags") else { continue }
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                let decoded = try JSONDecoder().decode(OllamaListResponse.self, from: data)
+                return decoded.models.map { OllamaModel(name: $0.name) }
+            } catch {
+                lastError = error
+                continue
+            }
+        }
+        throw lastError ?? URLError(.cannotConnectToHost)
     }
 
     func generate(model: String, prompt: String) async throws -> String {
-        let url = base.appendingPathComponent("api/generate")
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = [
-            "model": model,
-            "prompt": prompt,
-            "stream": false,
-        ]
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, _) = try await URLSession.shared.data(for: req)
-        let decoded = try JSONDecoder().decode(OllamaGenerateResponse.self, from: data)
-        return decoded.response
+        for host in hosts {
+            guard let url = URL(string: "\(host)/api/generate") else { continue }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            let body: [String: Any] = [
+                "model": model,
+                "prompt": prompt,
+                "stream": false,
+            ]
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            do {
+                let (data, _) = try await URLSession.shared.data(for: req)
+                let decoded = try JSONDecoder().decode(OllamaGenerateResponse.self, from: data)
+                return decoded.response
+            } catch {
+                continue
+            }
+        }
+        throw URLError(.cannotConnectToHost)
     }
 }

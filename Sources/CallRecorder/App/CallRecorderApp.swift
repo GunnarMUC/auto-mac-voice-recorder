@@ -40,9 +40,7 @@ struct MenuBarContentView: View {
 
     var body: some View {
         devicesMenu
-        if state.ollamaRunning && !state.availableModels.isEmpty {
-            llmMenu
-        }
+        llmMenu
 
         switch state.recordingState {
         case .idle:
@@ -103,22 +101,28 @@ struct MenuBarContentView: View {
     // MARK: - LLM Model
 
     private var llmMenu: some View {
-        Menu(state.selectedModel?.name ?? "Select Summary Model") {
-            Button("Refresh Models") {
-                Task { await state.refreshOllama() }
-            }
-            Divider()
-            ForEach(state.availableModels) { model in
-                Button {
-                    state.selectedModel = model
-                } label: {
-                    HStack {
-                        Text(model.name)
-                        if model.name == state.selectedModel?.name {
-                            Image(systemName: "checkmark")
+        if state.ollamaRunning && !state.availableModels.isEmpty {
+            Menu(state.selectedModel?.name ?? "Select Summary Model") {
+                Button("Refresh Models") {
+                    Task { await state.refreshOllama() }
+                }
+                Divider()
+                ForEach(state.availableModels) { model in
+                    Button {
+                        state.selectedModel = model
+                    } label: {
+                        HStack {
+                            Text(model.name)
+                            if model.name == state.selectedModel?.name {
+                                Image(systemName: "checkmark")
+                            }
                         }
                     }
                 }
+            }
+        } else {
+            Button("Connect to Ollama...") {
+                Task { await state.refreshOllama() }
             }
         }
     }
