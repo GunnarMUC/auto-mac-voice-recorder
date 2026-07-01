@@ -1,13 +1,15 @@
-# Call Recorder — Phase 1
+# Call Recorder
 
-A local-only, open-source macOS menu-bar app for recording calls, transcribing speech with OpenAI Whisper, and storing results in a local SQLite database.
+A local-only, open-source macOS menu-bar app for recording calls (mic + system audio via BlackHole), transcribing speech with OpenAI Whisper (auto-detect DE/EN), and storing results in a local SQLite database.
 
-## Features (Phase 1)
+## Features
 
 - **Menu bar app** — lives in your menu bar, ready when you need it
 - **Manual recording** — click to start, click to stop
+- **Audio input picker** — select any input device (microphone, BlackHole, Aggregate Device)
 - **Local transcription** — runs OpenAI Whisper entirely on your Mac (no cloud)
-- **Call history** — browse past recordings with transcripts
+- **Language auto-detect** — German and English are supported automatically
+- **Call history** — browse past recordings with searchable transcripts
 - **Automatic audio conversion** — resamples recorded audio to Whisper's preferred 16 kHz mono format
 
 ## Requirements
@@ -24,78 +26,62 @@ A local-only, open-source macOS menu-bar app for recording calls, transcribing s
 
 To record both your microphone **and** the other party's audio on a call, you need a virtual audio device.
 
-**Option A — Installer (recommended)**
 1. Download [BlackHole 2ch](https://existential.audio/blackhole/) (free, open-source)
 2. Run the installer
 3. Open **Audio MIDI Setup** (macOS built-in app)
 4. Click the **+** button → **Create Aggregate Device**
 5. Check both your **physical microphone** and **BlackHole 2ch**
 6. Name it "CallRecorder Input" (or any name you like)
-7. Set the **Aggregate Device** as your Mac's default **input** in **System Settings → Sound → Input**
+7. Select the Aggregate Device in the app's **Audio Input** menu
 8. Set **BlackHole 2ch** as your Mac's default **output** in **System Settings → Sound → Output**
 
-> **Note:** Setting BlackHole as output means you won't hear audio through your speakers. During calls, route the call app (Zoom, Teams, etc.) to use a multi-output device or use a tool like [Loopback](https://rogueamoeba.com/loopback/) for more flexible routing. For Phase 1, the simplest workflow is: set output to BlackHole during the call, record, then switch back to your speakers after.
+> **Note:** Setting BlackHole as output means you won't hear audio through your speakers. During calls, route the call app (Zoom, Teams, etc.) to use a multi-output device or use a tool like [Loopback](https://rogueamoeba.com/loopback/) for more flexible routing.
 
-**Option B — For testing without BlackHole**
-- You can test the app by recording only your microphone. Set any microphone as the input and speak. The transcription will only capture your side of the conversation, but it's enough to verify the pipeline works.
-
-### 2. Build the App
+### 2. Build & Run
 
 ```bash
-# Clone or navigate to the project directory
-cd CallRecorder
-
-# Open in Xcode
-open Package.swift
+swift run CallRecorder
 ```
 
-In Xcode:
-1. Select the **CallRecorder** scheme
-2. Choose **My Mac** as the target
-3. Press **Cmd+R** to build and run
+The app will appear as a microphone icon in your menu bar.
 
 ### 3. First Run
 
-1. The app will appear as a **microphone icon** in your menu bar
-2. Click it to open the recording panel
-3. The app will prompt you to **download the Whisper model** (~150 MB). Click **Download Model** and wait
-4. Once the model is ready, the **Start Recording** button becomes active
-5. Grant **Microphone Access** when macOS prompts you
+1. Click the menu bar icon → select **Start Recording** (or **Download Model** if required)
+2. Grant **Microphone Access** when macOS prompts you
 
 ### 4. Recording a Call
 
 1. **Before the call:** Set your system audio output to **BlackHole 2ch** (or your Aggregate Device)
-2. **Start the call** in Zoom, Teams, FaceTime, or any other app
-3. Click the **Call Recorder** menu bar icon → **Start Recording**
-4. Talk normally — the app records everything going into the microphone input (which includes both your mic and the system audio via the Aggregate Device)
-5. When the call ends, click **Stop Recording**
-6. The app will **transcribe** the audio locally. This takes roughly **0.5×–1× real-time** (a 10-minute call takes 5–10 minutes to transcribe)
-7. Once done, view the transcript in **Call History**
+2. Select your Aggregate Device in the app's **Audio Input** menu
+3. Click **Start Recording**
+4. When the call ends, click **Stop & Process**
+5. The app transcribes locally (~0.5× real-time), then shows the result in **Call History**
 
 ## Project Structure
 
 ```
 CallRecorder/
-├── Package.swift                          # Swift Package Manager manifest
+├── Package.swift                              # Swift Package Manager manifest
+├── Dependencies/whisper.spm/                  # whisper.cpp (local SPM package)
 ├── Sources/CallRecorder/
 │   ├── App/
-│   │   ├── CallRecorderApp.swift          # @main entry point, MenuBarExtra
-│   │   ├── ContentView.swift              # Navigation stack wrapper
-│   │   └── AppState.swift                 # Shared state, recording orchestration
+│   │   ├── CallRecorderApp.swift              # @main entry point, MenuBarExtra
+│   │   └── AppState.swift                     # Observable state, recording orchestration
 │   ├── Audio/
-│   │   ├── AudioRecorder.swift            # AVAudioRecorder wrapper (raw capture)
-│   │   └── AudioFormatConverter.swift     # Resample to 16 kHz mono WAV for Whisper
+│   │   ├── AudioRecorder.swift                # AVAudioEngine capture → 16 kHz WAV
+│   │   └── AudioDeviceManager.swift           # Core Audio input device enumeration
 │   ├── Transcription/
-│   │   ├── WhisperTranscriber.swift       # whisper.cpp C API bridge
-│   │   └── ModelManager.swift             # Download & cache Whisper GGML model
+│   │   ├── WhisperTranscriber.swift           # whisper.cpp C API bridge
+│   │   └── ModelManager.swift                 # Download & cache Whisper GGML model
 │   ├── Storage/
-│   │   ├── DatabaseManager.swift          # SQLite persistence layer
-│   │   └── CallRecord.swift               # Data model
+│   │   ├── DatabaseManager.swift              # SQLite persistence via SQLite.swift
+│   │   └── CallRecord.swift                   # Data models
 │   └── UI/
-│       ├── RecordingPanel.swift           # Main menu-bar window (start/stop/download)
-│       ├── CallHistoryView.swift          # List of past recordings
-│       ├── TranscriptDetailView.swift     # Full transcript viewer
-│       └── SettingsView.swift             # Model status & app info
+│       ├── CallHistoryView.swift              # List of past recordings
+│       └── TranscriptDetailView.swift         # Full transcript viewer
+├── Sources/PoC/                               # CLI proof-of-concept tool
+└── call-recorder-spec.md                      # Full technical specification
 ```
 
 ## Architecture
@@ -104,35 +90,29 @@ CallRecorder/
 User clicks "Start Recording"
          │
          ▼
-┌────────────────────┐
-│  AudioRecorder     │  → AVAudioRecorder → raw CAF (48 kHz, stereo)
-│  (Core Audio)      │
-└────────────────────┘
+┌──────────────────────┐
+│  AudioRecorder       │ → AVAudioEngine tap → 16 kHz mono WAV
+│  (selected device)   │
+└──────────────────────┘
          │
-User clicks "Stop"
-         │
-         ▼
-┌────────────────────┐
-│ AudioFormatConverter│ → AVAudioConverter → 16 kHz mono float32 WAV
-│ (AVFoundation)     │
-└────────────────────┘
+User clicks "Stop & Process"
          │
          ▼
-┌────────────────────┐
-│  WhisperTranscriber│ → whisper.cpp (local, GPU-accelerated)
-│  (C API via SPM)   │    → timed transcript text
-└────────────────────┘
+┌──────────────────────┐
+│  WhisperTranscriber  │ → whisper.cpp (local, GPU via Accelerate)
+│  (auto-detect DE/EN) │    → timed transcript segments
+└──────────────────────┘
          │
          ▼
-┌────────────────────┐
-│  DatabaseManager   │ → SQLite.swift → persistent storage
-│  (SQLite)          │
-└────────────────────┘
+┌──────────────────────┐
+│  DatabaseManager     │ → SQLite.swift → persistent storage
+│  (SQLite)            │
+└──────────────────────┘
          │
          ▼
-┌────────────────────┐
-│  SwiftUI Views     │ → menu bar window with transcript
-└────────────────────┘
+┌──────────────────────┐
+│  SwiftUI Views       │ → MenuBarExtra + History window
+└──────────────────────┘
 ```
 
 ## Dependencies
@@ -145,7 +125,7 @@ User clicks "Stop"
 
 ## Model
 
-The app downloads the **Whisper Base** model (`ggml-base.bin`, ~150 MB) automatically on first run. This model is a quantized GGML file produced by the whisper.cpp project. It is stored in:
+The app downloads the **Whisper Base** model (`ggml-base.bin`, ~150 MB) automatically on first run. It is stored in:
 
 ```
 ~/Library/Application Support/CallRecorder/models/ggml-base.bin
@@ -153,13 +133,16 @@ The app downloads the **Whisper Base** model (`ggml-base.bin`, ~150 MB) automati
 
 You can manually place a different model there (e.g., `ggml-small.bin` for higher accuracy) and the app will use it.
 
-## Known Limitations (Phase 1)
+## Language Support
 
-- **No speaker diarization** — Phase 2 will add Pyannote to identify "who said what"
-- **No AI summarization** — Phase 2 will add a local LLM (Llama/Mistral via MLX) to generate summaries and action items
-- **No auto-start** — recording must be started manually
-- **No real-time transcription** — transcription happens after recording stops
-- **Audio routing is manual** — you must set up BlackHole and aggregate devices yourself
+Whisper auto-detects the spoken language. German and English are fully supported; other languages may work but are not explicitly tested.
+
+## Known Limitations
+
+- **No speaker diarization** — planned: Pyannote to identify "who said what"
+- **No AI summarization** — planned: local LLM (Llama/Mistral via MLX)
+- **No real-time transcription** — transcription runs after recording stops
+- **Audio output routing is manual** — BlackHole must be set as system output
 - **Single-file processing** — one recording at a time
 
 ## Privacy
@@ -168,19 +151,13 @@ You can manually place a different model there (e.g., `ggml-small.bin` for highe
 - All audio and transcripts stay on your Mac in `~/Library/Application Support/CallRecorder/`
 - You are responsible for informing call participants that you are recording
 
-## Next Steps (Phase 2)
+## Next Steps
 
 - Speaker diarization (Pyannote.audio) — identify different speakers
-- Local LLM summarization (Llama 3.1 via MLX) — summarize calls and extract action items
+- Local LLM summarization — summarize calls and extract action items
 - Per-person and team to-do lists
-- Speaker name labeling
 - Export to Markdown/PDF
-- Auto-delete old audio files
 - Better audio routing wizard
-
-## License
-
-This project is provided as-is for personal productivity. Third-party dependencies retain their own licenses (MIT, Llama 3.1 License, etc.).
 
 ## Troubleshooting
 
@@ -188,13 +165,18 @@ This project is provided as-is for personal productivity. Third-party dependenci
 |-------|----------|
 | "Microphone access denied" | Go to **System Settings → Privacy & Security → Microphone** and enable Call Recorder |
 | "No audio in transcript" | Verify BlackHole is selected as output and the Aggregate Device is selected as input |
-| "Transcription is slow" | This is normal on CPU; Apple Silicon GPU is used automatically. First run may be slower due to model loading. |
-| "Model download failed" | Check your internet connection. The model is downloaded from HuggingFace. You can also manually download `ggml-base.bin` and place it in `~/Library/Application Support/CallRecorder/models/`. |
-| "Build errors in Xcode" | Make sure you have **Xcode 15+** and **macOS 14+ SDK** selected. The app uses `MenuBarExtra` which requires macOS 14. |
+| "Transcription is slow" | Normal on CPU; Apple Silicon GPU used automatically |
+| "Model download failed" | Check your internet connection. Manually download `ggml-base.bin` from [HuggingFace](https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin) and place it in `~/Library/Application Support/CallRecorder/models/` |
+| "App menu doesn't respond" | Make sure you click the menu icon to open the dropdown, then select items |
 
-## Development Notes
+## Development
 
-- The app is built with **Swift Package Manager** and opened in Xcode via `Package.swift`
-- `whisper.cpp` is integrated via SPM as a C++ package with Swift bridging
-- `SQLite.swift` provides a type-safe Swift wrapper over SQLite
-- The transcription runs on a background `DispatchQueue` and returns via `async/await`
+```bash
+# Build & run the menu bar app
+swift run CallRecorder
+
+# Build & run the CLI PoC (for testing without UI)
+swift run PoC <model-path>
+```
+
+Built with **Swift Package Manager** and **SwiftUI** for macOS 14+.

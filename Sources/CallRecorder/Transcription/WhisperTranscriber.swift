@@ -39,6 +39,7 @@ final class WhisperTranscriber {
                 params.print_realtime = false
                 params.print_progress = true
                 params.n_threads = Int32(ProcessInfo.processInfo.processorCount)
+                params.detect_language = true
 
                 let nSamples = Int32(samples.count)
                 let ret = whisper_full(ctx, params, samples, nSamples)

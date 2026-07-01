@@ -39,28 +39,141 @@ struct MenuBarContentView: View {
     @Environment(AppState.self) var state
 
     var body: some View {
-        VStack(spacing: 0) {
-            RecordingPanel()
-                .environment(state)
+        devicesMenu
 
-            Divider()
-
-            Button {
-                state.loadCalls()
-                openWindow(id: "history")
-            } label: {
-                Label("Call History", systemImage: "clock.arrow.circlepath")
+        switch state.recordingState {
+        case .idle:
+            if state.modelLoaded {
+                Divider()
+                startButton
+            } else {
+                downloadButton
             }
-            .keyboardShortcut("h")
-
+        case .recording(let startedAt):
             Divider()
-
-            Button(action: { NSApplication.shared.terminate(nil) }) {
-                Label("Quit", systemImage: "xmark")
+            Text(timeString(from: startedAt, at: .now))
+                .font(.title3)
+                .monospacedDigit()
+                .foregroundStyle(.red)
+            if let device = state.selectedDevice {
+                Text(device.name)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
-            .keyboardShortcut("q")
+            Divider()
+            stopButton
+        case .processing:
+            Divider()
+            processingItem
+        case .needsDownload(let progress):
+            Divider()
+            downloadProgressItem(progress: progress)
         }
-        .environment(state)
-        .task { await state.checkModel() }
+
+        Divider()
+        historyButton
+        Divider()
+        quitButton
     }
+
+    // MARK: - Devices
+
+    private var devicesMenu: some View {
+        Menu(state.selectedDevice?.name ?? "Select Audio Input") {
+            Button("Refresh Devices", action: { state.refreshDevices() })
+            Divider()
+            ForEach(state.availableDevices) { device in
+                Button {
+                    state.selectedDevice = device
+                } label: {
+                    HStack {
+                        Text(device.name)
+                        if device.id == state.selectedDevice?.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Buttons
+
+    private var startButton: some View {
+        Button(action: { state.startRecording() }) {
+            HStack {
+                Image(systemName: "record.circle")
+                    .foregroundStyle(.red)
+                Text("Start Recording")
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    private var stopButton: some View {
+        Button(action: { state.stopRecording() }) {
+            HStack {
+                Image(systemName: "stop.circle")
+                    .foregroundStyle(.red)
+                Text("Stop & Process")
+            }
+        }
+    }
+
+    private var historyButton: some View {
+        Button {
+            state.loadCalls()
+            openWindow(id: "history")
+        } label: {
+            Label("Call History", systemImage: "clock.arrow.circlepath")
+        }
+        .keyboardShortcut("h")
+    }
+
+    private var quitButton: some View {
+        Button(action: { NSApplication.shared.terminate(nil) }) {
+            Label("Quit", systemImage: "xmark")
+        }
+        .keyboardShortcut("q")
+    }
+
+    // MARK: - Other items
+
+    private var downloadButton: some View {
+        VStack(spacing: 4) {
+            Text("Whisper model required")
+                .font(.caption)
+            Text("~141 MB download")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Button("Download Model") {
+                Task { await state.downloadModel() }
+            }
+        }
+    }
+
+    private var processingItem: some View {
+        HStack {
+            ProgressView()
+                .scaleEffect(0.7)
+            Text("Transcribing…")
+                .font(.caption)
+        }
+    }
+
+    private func downloadProgressItem(progress: Double) -> some View {
+        VStack(spacing: 4) {
+            ProgressView(value: progress)
+            Text("Downloading… \(Int(progress * 100))%")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private func timeString(from date: Date, at now: Date) -> String {
+    let d = now.timeIntervalSince(date)
+    let m = Int(d) / 60
+    let s = Int(d) % 60
+    return String(format: "%02d:%02d", m, s)
 }
