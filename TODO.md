@@ -7,14 +7,14 @@
 - [x] **To-Do Checkboxen** — Action Items mit ✓ und Durchstreichen, persistiert in DB.
 - [x] **Export to Markdown** — Exportiert Transcript + Summary + ToDos als .md auf den Desktop.
 
-## Phase 4 (Future)
+## Phase 4 (Partial)
 
-- [ ] **Real-time transcription** — Transcribe audio while recording, not just after stopping.
-- [ ] **Audio routing wizard** — Auto-detect input devices and guide user through BlackHole + Aggregate Device setup.
-- [ ] **Export to PDF** — In addition to Markdown export, add PDF export with proper formatting.
-- [ ] **Auto-delete old audio files** — Configurable storage limit with automatic cleanup of old recordings.
-- [ ] **Settings panel** — Dedicated settings window for model selection (Whisper, Pyannote, Ollama), storage directory, device management.
-- [ ] **Calendar integration** — Suggest recording based on calendar events.
+- [x] **Export to PDF** — PDF-Generierung via CoreGraphics + HTML-Rendering, speichert auf Desktop.
+- [x] **Auto-delete old audio files** — Konfigurierbare Aufbewahrungsdauer (7/30/90 Tage), manueller Cleanup-Button.
+- [x] **Audio routing wizard** — BlackHole-Erkennung + Setup-Anleitung im Settings-Panel.
+- [x] **Settings panel** — Fenster mit 4 Tabs: General (Cleanup, BlackHole), Audio (Device-Auswahl), Models (Whisper + LLM), Storage (Nutzung).
+- [ ] **Real-time transcription** — Audio während Aufnahme transkribieren (komplex, später).
+- [ ] **Calendar integration** — EventKit-Kalender-Anbindung (später).
 
 ## Known Issues
 
