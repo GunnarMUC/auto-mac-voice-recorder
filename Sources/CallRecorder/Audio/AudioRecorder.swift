@@ -9,6 +9,8 @@ final class AudioRecorder {
     func startRecording(device: AudioDevice? = nil) throws {
         samples.removeAll()
 
+        engine.prepare()
+
         if let device {
             AudioDeviceManager.setInputDevice(device, on: engine)
         }
@@ -34,7 +36,6 @@ final class AudioRecorder {
             }
         }
 
-        engine.prepare()
         try engine.start()
     }
 
