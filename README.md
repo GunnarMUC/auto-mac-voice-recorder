@@ -1,3 +1,5 @@
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)n
+
 # Call Recorder
 
 A local-only, open-source macOS menu-bar app for recording calls (mic + system audio via BlackHole), transcribing speech with OpenAI Whisper (auto-detect DE/EN), speaker diarization via Pyannote, and AI summarization via Ollama.
