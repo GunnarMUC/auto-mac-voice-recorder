@@ -1,4 +1,5 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)n
+[![CI](https://github.com/GunnarMUC/auto-mac-voice-recorder/actions/workflows/ci.yml/badge.svg)](https://github.com/GunnarMUC/auto-mac-voice-recorder/actions)
 
 # Call Recorder
 
