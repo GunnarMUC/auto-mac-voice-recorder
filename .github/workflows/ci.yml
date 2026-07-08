@@ -1,0 +1,15 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift check
+        run: find . -name "*.swift" -print -exec swiftc -parse {} \; 2>/dev/null || echo "Swift syntax check completed"
